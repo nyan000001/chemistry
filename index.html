@@ -329,11 +329,11 @@ function generatesmiles() {
 }
 get('form').onsubmit = async e => {
 	e.preventDefault();
-	get('info').textContent = 'loading...';
+	get('info').textContent = 'Loading...';
 	const keys = smiles.split('.').map(s => Kekule.IO.saveFormatData(Kekule.IO.loadFormatData(s, 'smi'), 'inchikey').trim()).join(',');
 	const result = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/'+keys+'/property/CanonicalSMILES,Title,IUPACName/JSON').then(x => x.json());
 	if(result.Fault) {
-		get('title').textContent = 'Error!';
+		get('info').textContent = 'Error!';
 		console.warn(result, result.Fault);
 		return;
 	}

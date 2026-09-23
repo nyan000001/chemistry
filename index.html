@@ -12,9 +12,9 @@ circle:hover, line:first-of-type:hover ~ line { stroke-width:3; }
 .selection { stroke-width:4px; }
 .error { stroke:#f00; }
 .ionic { stroke-dasharray:5 5; }
-#form, #info { position:fixed; bottom:0; }
-#form { display:flex; }
-#info { right:0; text-align:right; white-space:pre-wrap; }
+#form, #info { position:fixed; bottom:5px; }
+#form { left:5px; display:flex; }
+#info { right:5px; text-align:right; white-space:pre-wrap; }
 </style>
 </head>
 <body>
@@ -338,6 +338,7 @@ get('form').onsubmit = async e => {
 		return;
 	}
 	console.log(result);
+	get('info').textContent = '';
 	for(const mol of result.PropertyTable.Properties) {
 		const div = document.createElement('div');
 		const title = mol.Title?.toLowerCase() ?? '';

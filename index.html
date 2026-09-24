@@ -102,6 +102,9 @@ function removebond(bond, amount = 1) {
 let radius = 25;
 onwheel = e => {
 	radius -= e.deltaY > 0? 1: -1;
+	if(radius < 10) {
+		radius = 10;
+	}
 }
 function drawatom(atom) {
 	atom.circle.setAttribute('cx', atom.x);

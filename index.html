@@ -4,12 +4,11 @@
 <style>
 * { font:20px monospace; }
 #svg { position:fixed; top:0; left:0; width:100%; height:100%; user-select:none; stroke:#000; }
-circle { r:25px; stroke-width:2; cursor:pointer; }
+circle { stroke-width:2; cursor:pointer; }
 text { pointer-events:none; text-anchor:middle; dominant-baseline:middle; fill:#fff; paint-order:stroke fill; text-shadow:0 0 2px #000; }
 line { stroke-width:2; pointer-events:none; }
 line:first-of-type { stroke:transparent; stroke-width:50; pointer-events:stroke; cursor:pointer; stroke-dasharray:none !important; }
-circle:hover, line:first-of-type:hover ~ line { stroke-width:3; }
-.selection { stroke-width:4px; }
+circle:hover, line:first-of-type:hover ~ line, .selection { stroke-width:4; }
 .error { stroke:#f00; }
 .ionic { stroke-dasharray:5 5; }
 #form, #info { position:fixed; bottom:5px; }
@@ -41,16 +40,16 @@ const bonds = [];
 const selections = [];
 const get = id => document.getElementById(id);
 const create = elem => document.createElementNS('http://www.w3.org/2000/svg', elem);
-const getdistance = (a, b) => {
+const getdist = (a, b) => {
 	const dx = b.x - a.x;
 	const dy = b.y - a.y;
 	return [dx, dy, Math.sqrt(dx*dx+dy*dy)];
 };
 function drawbond(bond) {
 	const [a, b] = bond.atoms;
-	const [dx, dy, distance] = getdistance(a, b) || 1;
-	const nx = -dy / distance;
-	const ny = dx / distance;
+	const [dx, dy, dist] = getdist(a, b) || 1;
+	const nx = -dy / dist;
+	const ny = dx / dist;
 	const draw = (line, offset) => {
 		line.setAttribute('x1', a.x + nx * offset);
 		line.setAttribute('y1', a.y + ny * offset);
@@ -100,10 +99,14 @@ function removebond(bond, amount = 1) {
 		bonds.splice(bonds.indexOf(bond), 1);
 	}
 }
+let radius = 25;
+onwheel = e => {
+	radius -= e.deltaY > 0? 1: -1;
+}
 function drawatom(atom) {
 	atom.circle.setAttribute('cx', atom.x);
 	atom.circle.setAttribute('cy', atom.y);
-	atom.circle.setAttribute('r', 10);
+	atom.circle.setAttribute('r', radius);
 	atom.text.setAttribute('x', atom.x);
 	atom.text.setAttribute('y', atom.y);
 	for(const bond of bonds) {
@@ -111,17 +114,15 @@ function drawatom(atom) {
 		drawbond(bond);
 	}
 }
-function createatom(atom) {
+function createatom(atom, pointerdown) {
 	atom.circle = create('circle');
 	atom.text = create('text');
 	[atom.element, atom.maxbonds, atom.circle.style.fill, atom.electronegativity] = ptable[atom.period][atom.group];
 	atom.text.textContent = atom.element;
 	svg.append(atom.circle, atom.text);
 	atom.bonds = 0;
-	const selection = selections.at(-1);
-	if(selection) {
-		createbond([selection, atom]);
-	}
+	atoms.push(atom);
+	drawatom(atom);
 	atom.circle.onpointerdown = e => {
 		if(e.button) {
 			atom.circle.remove();
@@ -131,51 +132,46 @@ function createatom(atom) {
 			}
 			atoms.splice(atoms.indexOf(atom), 1);
 			const index = selections.indexOf(atom);
-			selections.splice(index, 1);
-			if(index == selections.length) {
-				selections.at(-1).circle.classList.add('selection');
+			if(index > -1) {
+				selections.splice(index, 1);
 			}
-		} else {
-			const selection = selections.at(-1);
-			if(selection) {
-				selection.circle.classList.remove('selection');
-				const index = selections.indexOf(atom);
-				if(index > -1) {
-					selections.splice(index, 1);
-				}
-				if(bonds.every(bond => !bond.atoms.includes(selection) || !bond.atoms.includes(atom))) {
-					createbond([selection, atom]);
-				}
+			selections.at(-1)?.circle.classList.add('selection');
+			return;
+		}
+		const selection = selections.at(-1);
+		if(selection) {
+			selection.circle.classList.remove('selection');
+			const index = selections.indexOf(atom);
+			if(index > -1) {
+				selections.splice(index, 1);
 			}
-			selections.push(atom);
-			atom.circle.classList.add('selection');
+			if(bonds.every(bond => !bond.atoms.includes(selection) || !bond.atoms.includes(atom))) {
+				createbond([selection, atom]);
+			}
 		}
-	}
-	atoms.push(atom);
-	drawatom(atom);
-}
-oncontextmenu = e => e.preventDefault();
-onpointerdown = e => {
-	if(e.target == get('form')) return;
-	if(!e.button) {
-		if(e.target.tagName == 'svg') {
-			const atom = { x:e.pageX, y:e.pageY, period:1, group:13 };
-			createatom(atom);
-			selections.at(-1)?.circle.classList.remove('selection');
-			selections.push(atom);
-			atom.circle.classList.add('selection');
-		}
+		selections.push(atom);
+		atom.circle.classList.add('selection');
 		onpointermove = e => {
-			const atom = selections.at(-1);
 			atom.x = e.pageX;
 			atom.y = e.pageY;
 			drawatom(atom);
 		}
 	}
-	generatesmiles();
+	if(pointerdown) {
+		atom.circle.onpointerdown({});
+	}
 }
-onpointerup = () => onpointermove = null;
-async function drawmolecule(smiles) {
+get('svg').oncontextmenu = e => e.preventDefault();
+get('svg').onpointerdown = e => {
+	onpointerup = () => {
+		onpointerup = onpointermove = null;
+		generatesmiles();
+	}
+	if(e.target.tagName != 'svg' || e.button) return;
+	createatom({ x:e.pageX, y:e.pageY, period:1, group:13 }, true);
+}
+let smiles = decodeURIComponent(location.hash.slice(1));
+async function drawmolecule() {
 	if(!smiles) return;
 	const mol = Kekule.OpenBabel.StructUtils.generate2DStructure(Kekule.IO.loadFormatData(smiles, 'smi'));
 	const kekuleatoms = mol.getNodes();
@@ -188,33 +184,28 @@ async function drawmolecule(smiles) {
 		const group = ptable[period].findIndex(atom => atom?.[0] == element);
 		const coord = kekuleatom.getCoord2D();
 		const atom = { period, group, x:(coord.x-x)*100+100, y:(coord.y-y)*100+100 };
-//		const atom = { period, group, x:Math.random()*100+300, y:Math.random()*100+300 };
 		createatom(atom);
 	}
 	for(const kekulebond of mol.getConnectors()) {
 		createbond(kekulebond.getConnectedObjs().map(kekuleatom => atoms[mol.indexOfNode(kekuleatom)]), kekulebond.getBondOrder());
 	}
 }
-let smiles = decodeURIComponent(location.hash.slice(1));
 get('smiles').value = smiles;
-Kekule.OpenBabel.enable(() => {
-	if(smiles) {
-		drawmolecule(smiles);
-	}
-});
+Kekule.OpenBabel.enable(drawmolecule);
 get('smiles').oninput = () => {
-	const smiles = get('smiles').value;
+	smiles = get('smiles').value;
 	document.location.hash = encodeURIComponent(smiles);
 	atoms.length = 0;
 	bonds.length = 0;
 	selections.length = 0;
 	get('svg').innerHTML = '';
-	drawmolecule(smiles);
+	drawmolecule();
 }
 let queue = Promise.resolve();
 onkeydown = e => {
 	if(e.target == get('smiles')) return;
 	const atom = selections.at(-1);
+	if(!atom) return;
 	queue = queue.then(async () => {
 		let period = atom.period;
 		let group = atom.group;
@@ -252,28 +243,34 @@ onkeydown = e => {
 				bond.lines.classList.remove('ionic');
 			}
 		}
-		generatesmiles();
 	});
+}
+onkeyup = e => {
+	if(e.target == get('smiles')) return;
+	generatesmiles();
 }
 setInterval(() => {
 	const selection = selections.at(-1);
+	const size = radius*2;
+	const idealdist = size*2;
+	const idealdistSq = idealdist**2;
 	for(const bond of bonds) {
 		const [a, b] = bond.atoms;
-		const [dx, dy, distance] = getdistance(a, b);
-		if(!distance) {
-			b.x += 100;
+		const [dx, dy, dist] = getdist(a, b);
+		if(!dist) {
+			b.x += radius;
 			continue;
 		}
-		const nx = dx / distance;
-		const ny = dy / distance;
-		const force = (distance-100) * 0.5;
+		const nx = dx/dist;
+		const ny = dy/dist;
+		const correction = (dist-idealdist)/2*0.5;
 		if(a != selection) {
-			a.x += nx * force * 0.5;
-			a.y += ny * force * 0.5;
+			a.x += nx*correction;
+			a.y += ny*correction;
 		}
 		if(b != selection) {
-			b.x -= nx * force * 0.5;
-			b.y -= ny * force * 0.5;
+			b.x -= nx*correction;
+			b.y -= ny*correction;
 		}
 	}
 	for(let i = 0; i < atoms.length; i++) {
@@ -283,16 +280,16 @@ setInterval(() => {
 			const dx = b.x-a.x;
 			const dy = b.y-a.y;
 			const distSq = dx*dx + dy*dy;
-			if(distSq >= 10000) continue;
+			if(distSq >= idealdistSq) continue;
 			if(!distSq) {
-				a.x -= 50;
-				b.x += 50;
+				a.x -= radius;
+				b.x += radius;
 				continue;
 			}
-			const distance = Math.sqrt(distSq);
-			const factor = (100-distance) / 2 / distance;
-			const fx = dx * factor;
-			const fy = dy * factor;
+			const dist = Math.sqrt(distSq);
+			const factor = (idealdist-dist)/2/dist;
+			const fx = dx*factor;
+			const fy = dy*factor;
 			if(a != selection) {
 				a.x -= fx;
 				a.y -= fy;
@@ -303,7 +300,22 @@ setInterval(() => {
 			}
 		}
 	}
-	for(const atom of atoms) {
+	const maxX = get('svg').clientWidth-size;
+	const maxY = get('svg').clientHeight-size;
+	const k = 0.1;
+	for (const atom of atoms) {
+		if (atom != selection) {
+			if(atom.x < size) {
+				atom.x += (size-atom.x)*k;
+			} else if(atom.x > maxX) {
+				atom.x -= (atom.x-maxX)*k;
+			}
+			if(atom.y < size) {
+				atom.y += (size-atom.y)*k;
+			} else if(atom.y > maxY) {
+				atom.y -= (atom.y-maxY)*k;
+			}
+		}
 		drawatom(atom);
 	}
 }, 100);
@@ -321,10 +333,9 @@ function generatesmiles() {
 		}
 		mol.appendBond(bond.atoms.map(atom => map.get(atom)), bond.lines.children.length-1);
 	}
-	const newsmiles = Kekule.IO.saveFormatData(mol, "smi");
-	if(newsmiles == smiles) return;
-	smiles = newsmiles;
-	document.location.hash = get('smiles').value = decodeURIComponent(smiles);
+	smiles = Kekule.IO.saveFormatData(mol, "smi");
+	get('smiles').value = smiles;
+	document.location.hash = encodeURIComponent(smiles);
 	get('info').textContent = valid? '': 'Too many bonds!';
 }
 get('form').onsubmit = async e => {

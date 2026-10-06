@@ -647,7 +647,7 @@ get('form').onsubmit = async e => {
 	e.preventDefault();
 	const smile = smiles.split('.').reduce((a, b) => a.length > b.length? a: b);
 	get('info').innerHTML = html;
-	Jmol.script(jmol, 'load "$'+smile.replaceAll('"', ''))+'"';
+	Jmol.script(jmol, 'load $'+smile);
 	const result = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/property/CanonicalSMILES,Title,IUPACName/JSON', {
 		method:'POST',
 		headers:{ 'Content-Type': 'application/x-www-form-urlencoded' },

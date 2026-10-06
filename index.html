@@ -1,164 +1,417 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
+:root { --bgcolor:#fff; --color:#000; }
 * { font:20px monospace; }
-#svg { position:fixed; top:0; left:0; width:100%; height:100%; user-select:none; stroke:#000; touch-action:none; }
-circle { stroke-width:2; cursor:pointer; }
-text { pointer-events:none; text-anchor:middle; dominant-baseline:middle; fill:#fff; paint-order:stroke fill; text-shadow:0 0 2px #000; }
-line { stroke-width:2; pointer-events:none; }
-line:first-of-type { stroke:transparent; stroke-width:50; pointer-events:stroke; cursor:pointer; stroke-dasharray:none !important; }
-circle:hover, line:first-of-type:hover ~ line, .selection { stroke-width:4; }
-.error { stroke:#f00; }
-.ionic { stroke-dasharray:5 5; }
-#form, #info { position:fixed; bottom:5px; }
-#form { left:5px; display:flex; }
-#info { right:5px; text-align:right; white-space:pre-wrap; }
+body { margin:0; background:var(--bgcolor); color:var(--color); }
+.hidehydrogens g.H { display:none; }
+#wrapper { display:grid; grid-template-columns:1fr auto; grid-template-rows:1fr auto; height:100dvh; }
+#svg { user-select:none; touch-action:none; grid-column:1;  grid-row:1; width:100%; height:100%; }
+#svg * { -webkit-tap-highlight-color:transparent; }
+circle { fill:var(--bgcolor); stroke-width:3; }
+text { pointer-events:none; text-anchor:middle; dominant-baseline:middle; }
+line:not(.hitbox) { pointer-events:none; }
+#bonds, #atoms { stroke:var(--color); }
+#bonds line, #atoms line { stroke-width:3; }
+#bonds line.hitbox { stroke:transparent; stroke-width:50; pointer-events:stroke; cursor:pointer; }
+
+#atoms g:not(.H) circle:hover, #bonds .hitbox:hover ~ line, .selection > circle { stroke-width:5 !important; }
+#atoms g:not(.H) circle { cursor:pointer; }
+#atoms g.H { pointer-events:none; }
+#atoms g.H circle { r:15; }
+#atoms g.H text { font-size:17px; }
+
+#atoms text { fill:#fff; paint-order:stroke fill; text-shadow:0 0 2px #000; }
+
+#highlights line, #highlights text { stroke:#999; }
+#highlights circle, #highlights text { fill:#999; }
+
+.error { stroke:#f00 !important; }
+.highlight line, .highlight circle { stroke:#fff; }
+#form { display:flex; grid-column:1; grid-row:2; }
+#smiles { min-width:0; flex:1; }
+#info { white-space:pre-wrap; grid-column:2; grid-row: 1 / 3; }
+#atoms g.C circle { fill:#555; }
+#atoms g.N circle { fill:#35f; }
+#atoms g.O circle { fill:#f00; }
+#atoms g.F circle { fill:#9e5; }
+#atoms g.S circle { fill:#ff0; }
+
+#settings { position:fixed; top:0; left:0; cursor:default; user-select:none; background:var(--bgcolor); padding:3px; }
+label:hover { font-weight:bold; }
 </style>
 </head>
 <body>
-<div id="info"></div>
-<svg id="svg"></svg>
-<form id="form">
-	<input id="smiles" spellcheck="false" type="search">
-	<input type="submit" value="Identify">
-</form>
-<script src="https://cdn.jsdelivr.net/npm/kekule/dist/kekule.min.js"></script>
-<script>
-const ptable = [
-	[['H', 1, '#fff', 2.2], ...Array(16).fill(null)],
-	[['Li', 1, '#c8f', 0.98], ['Be', 2, '#cf0', 1.57], ...Array(10).fill(null), ['B', 3, '#fbb', 2.04], ['C', 4, '#999', 2.55], ['N', 5, '#35f', 3.04], ['O', 2, '#f00', 3.44], ['F', 1, '#9e5', 3.98]],
-	[['Na', 1, '#b5f', 0.93], ['Mg', 2, '#8f0', 1.31], ...Array(10).fill(null), ['Al', 3, '#bbb', 1.61], ['Si', 4, '#fc9', 1.9], ['P', 5, '#f80', 2.19], ['S', 6, '#ff3', 2.58], ['Cl', 7, '#1f1', 3.16]],
-	[['K', 1, '#84d', 0.82], ['Ca', 2, '#3f0', 1], ['Sc', 3, '#ccc', 1.36], ['Ti', 4, '#bbb', 1.54], ['V', 5, '#a6a', 1.63], ['Cr', 6, '#9ac', 1.66], ['Mn', 7, '#a7c', 1.55], ['Fe', 6, '#e63', 1.83], ['Co', 3, '#f9a', 1.88], ['Ni', 4, '#5d5', 1.91], ['Cu', 2, '#c83', 1.9], ['Zn', 2, '#78b', 1.65], ['Ga', 3, '#c99', 1.81], ['Ge', 4, '#699', 2.01], ['As', 5, '#b8e', 2.18], ['Se', 6, '#f91', 2.55], ['Br', 7, '#a22', 2.96]],
-	[['Rb', 1, '#72b', 0.82], ['Sr', 2, '#0f0', 0.95], ['Y', 3, '#9ff', 1.22], ['Zr', 4, '#9dd', 1.33], ['Nb', 5, '#7cc', 1.6], ['Mo', 6, '#5bb', 2.16], ['Tc', 7, '#399', 1.9], ['Ru', 8, '#299', 2.2], ['Rh', 6, '#088', 2.28], ['Pd', 4, '#067', 2.2], ['Ag', 1, '#ccc', 1.93], ['Cd', 2, '#fd9', 1.69], ['In', 3, '#a77', 1.78], ['Sn', 4, '#688', 1.96], ['Sb', 5, '#a6b', 2.05], ['Te', 6, '#d70', 2.1], ['I', 7, '#909', 2.66]],
-	[['Cs', 1, '#518', 0.79], ['Ba', 2, '#0c0', 0.89], ['La', 3, '#7df', 1.1], ['Ce', 4, '#ffc', 1.12], ['Pr', 4, '#dfc', 1.13], ['Nd', 4, '#cfc', 1.14], ['Pm', 3, '#9fc', 1.13], ['Sm', 3, '#8fc', 1.17], ['Eu', 3, '#6fc', 1.2], ['Gd', 3, '#4fc', 1.2], ['Tb', 4, '#3fc', 1.1], ['Dy', 3, '#2fc', 1.22], ['Ho', 3, '#0f9', 1.23], ['Er', 3, '#0e7', 1.24], ['Tm', 3, '#0d5', 1.25], ['Yb', 3, '#0b3', 1.1], ['Lu', 3, '#0a2', 1.27], ['Hf', 4, '#4cf', 1.3], ['Ta', 5, '#4af', 1.5], ['W', 6, '#29d', 2.36], ['Re', 7, '#278', 1.9], ['Os', 8, '#267', 2.2], ['Ir', 6, '#157', 2.2], ['Pt', 6, '#dde', 2.28], ['Au', 5, '#fd2', 2.54], ['Hg', 4, '#b8b', 2], ['Tl', 3, '#a65', 1.62], ['Pb', 4, '#575', 2.33], ['Bi', 5, '#a4b', 2.02], ['Po', 6, '#a50', 2], ['At', 7, '#754', 2.2]],
-	[['Fr', 1, '#406', 0.79], ['Ra', 2, '#070', 0.9], ['Ac', 3, '#7af', 1.1], ['Th', 4, '#0bf', 1.3], ['Pa', 5, '#0af', 1.5], ['U', 6, '#09f', 1.38], ['Np', 7, '#08f', 1.36], ['Pu', 8, '#06f', 1.28], ['Am', 6, '#54f', 1.13], ['Cm', 4, '#75e', 1.28], ['Bk', 4, '#84e', 1.3], ['Cf', 3, '#a3d', 1.3], ['Es', 3, '#b1d', 1.3], ['Fm', 3, '#b1b', 1.3], ['Md', 3, '#b0a', 1.3], ['No', 2, '#b08', 1.3], ['Lr', 3, '#c06', 1.3], ['Rf', 4, '#c05', 0], ['Db', 5, '#d04', 0], ['Sg', 6, '#d04', 0], ['Bh', 7, '#e03', 0], ['Hs', 8, '#e02', 0]]
-];
-const svg = document.getElementById('svg');
+<div id="wrapper">
+	<svg id="svg">
+		<g id="highlights"></g>
+		<g id="bonds"></g>
+		<g id="atoms"></g>
+	</svg>
+	<form id="form">
+		<input type="reset" value="❌">
+		<input id="smiles" spellcheck="false">
+		<input type="submit" value="🔎">
+	</form>
+	<div id="info"></div>
+</div>
+<details id="settings">
+	<summary>settings</summary>
+	<label><input type="checkbox" id="darkmode">dark mode</label>
+	<label><input type="checkbox" id="showhydrogens" checked>show hydrogens</label>
+</details>
+<script src="https://chemapps.stolaf.edu/jmol/jsmol/JSmol.min.js"></script>
+<script type="module">
+const html = Jmol.getAppletHtml('jmol', { use:'HTML5', j2sPath:'https://chemapps.stolaf.edu/jmol/jsmol/j2s' });
+import OCL from "https://cdn.jsdelivr.net/npm/openchemlib@9.25.0/dist/openchemlib.js";
+const ptable = [[0,0],[0,0],[0,0],[2,1],[2,2],[2,13],[2,14],[2,15],[2,16],[2,17],[2,18],[3,1],[3,2],[3,13],[3,14],[3,15],[3,16],[3,17],[3,18],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[4,10],[4,11],[4,12],[4,13],[4,14],[4,15],[4,16],[4,17],[4,18],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6],[5,7],[5,8],[5,9],[5,10],[5,11],[5,12],[5,13],[5,14],[5,15],[5,16],[5,17],[5,18],[6,1],[6,2],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[6,15],[6,16],[6,17],[6,18],[7,1],[7,2],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18]];
 const atoms = [];
 const bonds = [];
-const selections = [];
+let selection = null;
+let timeout;
 const get = id => document.getElementById(id);
 const create = elem => document.createElementNS('http://www.w3.org/2000/svg', elem);
-const getdist = (a, b) => {
-	const dx = b.x - a.x;
-	const dy = b.y - a.y;
+let smiles = '';
+try {
+	smiles = location.hash.slice(1);
+} catch(err) {
+	console.warn(err);
+}
+let mol = new OCL.Molecule(50, 50);
+const groups = [
+	['phenol', '|Oc1ccccc1|'],
+	['benzene', '|c1ccccc1|'],
+
+	['furan', '|c1ccoc1|'],
+	['pyrrole', '|c1ccnHc1|'],
+	['thiophene', '|c1ccsc1|'],
+	['pyridine', '|n1ccccc1|'],
+	['pyrazole', '|n1nccc1|'],
+	['imidazole', '|n1cncc1|'],
+	['oxazole', '|o1cncc1|'],
+	['thiazole', '|s1cncc1|'],
+	['piperidine', '|C1CCCCN1|'],
+	['pyrrolidine', '|C1CCCN1|'],
+	['tetrahydrofuran', '|C1CCCO1|'],
+
+	['acid anhydride', '|O=COC=O|'],
+	['ester', '|C(=O)O|C'],
+	['carboxylic acid', '|C(=O)OH|'],
+	['amide', '|NC=O|'],
+	['ketone', 'C|C(=O)|C'],
+	['aldehyde', '|CH=O|'],
+	['acyl chloride', '|C(=O)[Cl]|'],
+
+	['aziridine', '|C1NC1|'],
+	['cyanate', '|OC#N|'],
+	['isocyanate', '|N=C=O|'],
+	['fulminate', '|ON#C|'],
+	['nitrile oxide', '|C#NO|'],
+	['nitrile', '|C#N|'],
+	['amine', 'C|N|'],
+	['imine', '|C=N|'],
+	['nitro', '|N(=O)=O|'],
+	['azo', '|N=N|'],
+	['azide', '|N=N=N|'],
+	['hydrazone', '|C=NNH|'],
+
+	['epoxy', '|C1OC1|'],
+	['ether', 'C|O|C'],
+	['peroxy', 'C|OO|C'],
+	['trioxy', 'C|OOO|C'],
+	['tetroxy', 'C|OOOO|C'],
+	['alcohol', 'C|OH|'],
+	['hydroperoxy', 'C|OOH|'],
+	['hydrotrioxy', 'C|OOOH|'],
+	['hydrotetroxy', 'C|OOOOH|'],
+
+	['sulfoxide', '|S(=O)|'],
+	['sulfone', '|S(=O)(=O)|'],
+	['sulfonate ester', '|OS(=O)(=O)|'],
+	['sulfonamide', '|NS(=O)(=O)|'],
+	['isothiocyanate', '|N=C=S|'],
+	['thiocyanate', '|SC#N|'],
+	['thioester', '|C(=O)S|C'],
+	['dithioester', '|C(=S)S|C'],
+	['dithiocarboxylic acid', '|C(=S)SH|'],
+	['episulfide', '|C1SC1|'],
+	['sulfide', 'C|S|C'],
+	['disulfide', 'C|SS|C'],
+	['trisulfide', 'C|SSS|C'],
+	['thiol', 'C|SH|'],
+	['hydrodisulfide', 'C|SSH|'],
+	['hydrotrisulfide', 'C|SSSH|'],
+
+	['phosphate', '|P(=O)(O)(O)O|'],
+	['phosphite', '|P(O)(O)O|'],
+	['phosphine', '|P|'],
+
+	['fluoride', '|[F]|'],
+	['chloride', '|[Cl]|'],
+	['bromide', '|[Br]|'],
+	['iodide', '|[I]|'],
+];
+for(const group of groups) {
+	const query = OCL.Molecule.fromSmiles(group[1].replace(/[\|H]/g, ''));
+	query.setFragment(true);
+	group[2] = query;
+}
+const getdist = (atom1, atom2) => {
+	const dx = atom2.x - atom1.x;
+	const dy = atom2.y - atom1.y;
 	return [dx, dy, Math.sqrt(dx*dx+dy*dy)];
-};
-function drawbond(bond) {
-	const [a, b] = bond.atoms;
-	const [dx, dy, dist] = getdist(a, b) || 1;
-	const nx = -dy / dist;
-	const ny = dx / dist;
-	const draw = (line, offset) => {
-		line.setAttribute('x1', a.x + nx * offset);
-		line.setAttribute('y1', a.y + ny * offset);
-		line.setAttribute('x2', b.x + nx * offset);
-		line.setAttribute('y2', b.y + ny * offset);
-	};
-	const lines = [...bond.lines.children];
-	draw(lines.shift(), 0);
-	for(let i = 0; i < lines.length; i++) {
-		draw(lines[i], (i-(lines.length-1)/2)*6);
-	}
-}
-function createbond(atoms, amount = 1) {
-	atoms[0].bonds += amount;
-	atoms[1].bonds += amount;
-	let bond = bonds.find(bond => bond.atoms.includes(atoms[0]) && bond.atoms.includes(atoms[1]));
-	if(!bond) {
-		const lines = create('g');
-		bond = { atoms, lines };
-		if(Math.abs(atoms[0].electronegativity - atoms[1].electronegativity) >= 2) {
-			lines.classList.add('ionic');
-		}
-		lines.append(create('line'));
-		svg.prepend(bond.lines);
-		bonds.push(bond);
-		bond.lines.onpointerdown = e => {
-			if(e.button) {
-				removebond(bond);
-			} else {
-				createbond(atoms);
-			}
-		}
-	} else if(bond.lines.children.length == 4) return;
-	while(amount--) {
-		bond.lines.append(create('line'));
-	}
-	drawbond(bond);
-}
-function removebond(bond, amount = 1) {
-	bond.atoms[0].bonds -= amount;
-	bond.atoms[1].bonds -= amount;
-	while(amount--) {
-		bond.lines.lastChild.remove();
-	}
-	if(bond.lines.children.length == 1) {
-		bond.lines.remove();
-		bonds.splice(bonds.indexOf(bond), 1);
-	}
 }
 let radius = 25;
-onwheel = e => {
+get('svg').onwheel = e => {
 	radius -= e.deltaY > 0? 1: -1;
-	if(radius < 10) {
-		radius = 10;
+	if(radius < 15) {
+		radius = 15;
+	}
+	clearTimeout(timeout);
+	animate(0);
+}
+get('svg').ontouchstart = e => {
+	if(e.touches.length != 2) return;
+	const pinchDist = touches => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+	let prevDist = pinchDist(e.touches);
+	get('svg').ontouchmove = e => {
+		if(e.touches.length != 2) return;
+		const dist = pinchDist(e.touches);
+		radius = Math.max(15, radius + (dist-prevDist)/2);
+		prevDist = dist;
+		clearTimeout(timeout);
+		animate(0);
+	}
+	get('svg').ontouchend = () => {
+		get('svg').ontouchmove = get('svg').ontouchend = null;
 	}
 }
-function drawatom(atom) {
+if(smiles) {
+	drawmolecule();
+	get('smiles').value = smiles;
+}
+function drawmolecule() {
+	if(!smiles) {
+		mol = new OCL.Molecule(50, 50);
+		return;
+	}
+	try {
+		mol = OCL.Molecule.fromSmiles(smiles);
+		mol.inventCoordinates(); 
+	} catch(err) {
+		console.warn(err);
+		mol = new OCL.Molecule(50, 50);
+		return;
+	}
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	for(let i = 0; i < mol.getAllAtoms(); i++) {
+		const x = mol.getAtomX(i)*100;
+		const y = mol.getAtomY(i)*100;
+		minX = Math.min(minX, x);
+		minY = Math.min(minY, y);
+		maxX = Math.max(maxX, x);
+		maxY = Math.max(maxY, y);
+	}
+	const offsetX = get('svg').clientWidth/2 - (minX+maxX)/2;
+	const offsetY = get('svg').clientHeight/2 - (minY+maxY)/2;
+	for(let i = 0; i < mol.getAllAtoms(); i++) {
+		const [period, group] = ptable[mol.getAtomicNo(i)];
+		atoms.push({ period, group, x:mol.getAtomX(i)*100+offsetX, y:mol.getAtomY(i)*100+offsetY, hydrogens:[] });
+		createatom(i);
+	}
+	for(let i = 0; i < mol.getAllBonds(); i++) {
+		updatebond(i);
+	}
+	for(let i = 0; i < mol.getAllAtoms(); i++) {
+		validate(i);
+	}
+	highlight();
+	clearTimeout(timeout);
+	animate(0);
+}
+get('smiles').oninput = () => {
+	smiles = get('smiles').value;
+	history.replaceState(null, null, '#'+smiles);
+	atoms.length = 0;
+	bonds.length = 0;
+	selection = null;
+	get('highlights').textContent = get('bonds').textContent = get('atoms').textContent = '';
+	drawmolecule();
+}
+function validate(atomindex) {
+	const invalid = mol.getOccupiedValence(atomindex) > mol.getMaxValence(atomindex);
+	atoms[atomindex].g.classList[invalid? 'add': 'remove']('error');
+	for(let i = 0; i < bonds.length; i++) {
+		const atomindex1 = mol.getBondAtom(0, i);
+		const atomindex2 = mol.getBondAtom(1, i);
+		if(atomindex != atomindex1 && atomindex != atomindex2) continue;
+		const invalid = atoms[atomindex1].g.classList.contains('error') || atoms[atomindex2].g.classList.contains('error');
+		bonds[i].g.classList[invalid? 'add': 'remove']('error');
+	}
+}
+function unselect() {
+	if(selection == null) return;
+	atoms[selection]?.g.classList.remove('selection');
+	selection = null;
+}
+function movebond(bondindex) {
+	const atom1 = atoms[mol.getBondAtom(0, bondindex)];
+	const atom2 = atoms[mol.getBondAtom(1, bondindex)];
+	const [dx, dy, d] = getdist(atom1, atom2);
+	const dist = d || 1;
+	const nx = -dy / dist;
+	const ny = dx / dist;
+	const move = (line, offset) => {
+		line.setAttribute('x1', atom1.x + nx * offset);
+		line.setAttribute('y1', atom1.y + ny * offset);
+		line.setAttribute('x2', atom2.x + nx * offset);
+		line.setAttribute('y2', atom2.y + ny * offset);
+	};
+	const bond = bonds[bondindex];
+	if(bond.highlight) {
+		move(bond.highlight, 0);
+		bond.highlight.setAttribute('stroke-width', radius*2+20);
+	}
+	move(bond.hitbox, 0);
+	for(let i = 0; i < bond.lines.length; i++) {
+		move(bond.lines[i], (i-(bond.lines.length-1)/2)*6);
+	}
+}
+function movebonds(atomindex) {
+	for(let i = 0; i < bonds.length; i++) {
+		if(mol.getBondAtom(0, i) != atomindex && mol.getBondAtom(1, i) != atomindex) continue;
+		movebond(i);
+	}
+}
+function updatebond(bondindex) {
+	let bond = bonds[bondindex];
+	if(!bond) {
+		bond = { g:create('g'), hitbox:create('line'), lines:[] };
+		bonds.push(bond);
+		bond.hitbox.classList.add('hitbox');
+		bond.hitbox.onpointerdown = e => {
+			unselect();
+			const bondindex = bonds.indexOf(bond);
+			mol.setBondOrder(bondindex, Math.min(3, mol.getBondOrder(bondindex)+(e.button? -1: 1)));
+			updatebond(bondindex);
+		}
+		bond.g.append(bond.hitbox);
+		get('bonds').append(bond.g);
+	}
+	while(bond.lines.length < mol.getBondOrder(bondindex)) {
+		const line = create('line');
+		bond.lines.push(line);
+		bond.g.append(line);
+	}
+	while(bond.lines.length > mol.getBondOrder(bondindex)) {
+		bond.lines.pop().remove();
+	}
+	const atomindex1 = mol.getBondAtom(0, bondindex);
+	const atomindex2 = mol.getBondAtom(1, bondindex);
+	updatehydrogens(atomindex1);
+	updatehydrogens(atomindex2);
+	movebond(bondindex);
+	if(!mol.getBondOrder(bondindex)) {
+		bond.g.remove();
+		bonds.splice(bondindex, 1);
+		mol.deleteBond(bondindex);
+	}
+	validate(atomindex1);
+	validate(atomindex2);
+}
+function updatehydrogens(atomindex) {
+	const atom = atoms[atomindex];
+	while(atom.hydrogens.length > mol.getImplicitHydrogens(atomindex)) {
+		atom.hydrogens.pop().g.remove();
+	}
+	while(atom.hydrogens.length < mol.getImplicitHydrogens(atomindex)) {
+		const g = create('g');
+		g.classList.add('H');
+		const line = create('line');
+		const circle = create('circle');
+		const text = create('text');
+		text.textContent = 'H';
+		g.append(line, circle, text);
+		atom.g.prepend(g);
+		atom.hydrogens.push({ g, line, circle, text, x:atom.x+Math.random()-.5, y:atom.y+Math.random()-.5 });
+	}
+}
+function moveatom(atomindex) {
+	const atom = atoms[atomindex];
+	if(atom.highlight) {
+		atom.highlight.setAttribute('cx', atom.x);
+		atom.highlight.setAttribute('cy', atom.y);
+		atom.highlight.setAttribute('r', radius+10);
+		const bbox = atom.highlight.parentNode.getBBox();
+		atom.grouptext.setAttribute('x', bbox.x+bbox.width/2);
+		atom.grouptext.setAttribute('y', bbox.y+bbox.height+7);
+	}
 	atom.circle.setAttribute('cx', atom.x);
 	atom.circle.setAttribute('cy', atom.y);
 	atom.circle.setAttribute('r', radius);
 	atom.text.setAttribute('x', atom.x);
 	atom.text.setAttribute('y', atom.y);
-	for(const bond of bonds) {
-		if(!bond.atoms.includes(atom)) continue;
-		drawbond(bond);
+	for(const hydrogen of atom.hydrogens) {
+		hydrogen.line.setAttribute('x1', atom.x);
+		hydrogen.line.setAttribute('y1', atom.y);
+		hydrogen.line.setAttribute('x2', hydrogen.x);
+		hydrogen.line.setAttribute('y2', hydrogen.y);
+		hydrogen.circle.setAttribute('cx', hydrogen.x);
+		hydrogen.circle.setAttribute('cy', hydrogen.y);
+		hydrogen.text.setAttribute('x', hydrogen.x);
+		hydrogen.text.setAttribute('y', hydrogen.y);
 	}
 }
-function createatom(atom, pointerdown) {
+function createatom(atomindex, pointerdown) {
+	const atom = atoms[atomindex];
+	atom.g = create('g');
 	atom.circle = create('circle');
 	atom.text = create('text');
-	[atom.element, atom.maxbonds, atom.circle.style.fill, atom.electronegativity] = ptable[atom.period][atom.group];
-	atom.text.textContent = atom.element;
-	svg.append(atom.circle, atom.text);
-	atom.bonds = 0;
-	atoms.push(atom);
-	drawatom(atom);
+	const label = atom.text.textContent = mol.getAtomLabel(atomindex);
+	atom.g.classList.add(label);
+	atom.g.append(atom.circle, atom.text);
+	get('atoms').append(atom.g);
+	updatehydrogens(atomindex);
+	moveatom(atomindex);
 	atom.circle.onpointerdown = e => {
+		const atomindex = atoms.indexOf(atom);
 		if(e.button) {
-			atom.circle.remove();
-			atom.text.remove();
-			for(const bond of bonds.filter(bond => bond.atoms.includes(atom))) {
-				removebond(bond, bond.lines.children.length-1);
+			unselect();
+			for(let i = mol.getAllBonds()-1; i >= 0; i--) {
+				if(atomindex != mol.getBondAtom(0, i) && atomindex != mol.getBondAtom(1, i)) continue;
+				mol.setBondOrder(i, 0);
+				updatebond(i);
 			}
-			atoms.splice(atoms.indexOf(atom), 1);
-			const index = selections.indexOf(atom);
-			if(index > -1) {
-				selections.splice(index, 1);
-			}
-			selections.at(-1)?.circle.classList.add('selection');
+			atom.g.remove();
+			atoms.splice(atomindex, 1);
+			mol.deleteAtom(atomindex);
+			onpointermove = onpointerup = null;
 			return;
 		}
-		const selection = selections.at(-1);
-		if(selection) {
-			selection.circle.classList.remove('selection');
-			const index = selections.indexOf(atom);
-			if(index > -1) {
-				selections.splice(index, 1);
+		if(selection != null && selection != atomindex) {
+			if(mol.getBond(selection, atomindex) == -1) {
+				const bondindex = mol.addBond(selection, atomindex);
+				mol.setBondOrder(bondindex, 1);
+				updatebond(bondindex);
 			}
-			if(bonds.every(bond => !bond.atoms.includes(selection) || !bond.atoms.includes(atom))) {
-				createbond([selection, atom]);
-			}
+			atoms[selection].g.classList.remove('selection');
 		}
-		selections.push(atom);
-		atom.circle.classList.add('selection');
+		selection = atomindex;
+		atom.g.classList.add('selection');
 		onpointermove = e => {
 			atom.x = e.pageX;
 			atom.y = e.pageY;
-			drawatom(atom);
+			clearTimeout(timeout);
+			animate(0);
+		}
+		onpointerup = () => {
+			onpointerup = onpointermove = null;
 		}
 	}
 	if(pointerdown) {
@@ -167,54 +420,43 @@ function createatom(atom, pointerdown) {
 }
 get('svg').oncontextmenu = e => e.preventDefault();
 get('svg').onpointerdown = e => {
-	onpointerup = () => {
-		onpointerup = onpointermove = null;
-		generatesmiles();
+	if(e.target == get('svg')) {
+		if(e.button) {
+			unselect();
+		} else {
+			atoms.push({ x:e.pageX, y:e.pageY, period:2, group:14, hydrogens:[] });
+			createatom(mol.addAtom(6), true);
+		}
 	}
-	if(e.target.tagName != 'svg' || e.button) return;
-	createatom({ x:e.pageX, y:e.pageY, period:1, group:13 }, true);
+	generatesmiles();
 }
-let smiles = decodeURIComponent(location.hash.slice(1));
-async function drawmolecule() {
-	if(!smiles) return;
-	const mol = Kekule.OpenBabel.StructUtils.generate2DStructure(Kekule.IO.loadFormatData(smiles, 'smi'));
-	const kekuleatoms = mol.getNodes();
-	const coords = kekuleatoms.map(kekuleatom => kekuleatom.getCoord2D());
-	const x = Math.min(...coords.map(coord => coord.x));
-	const y = Math.min(...coords.map(coord => coord.y));
-	for(const kekuleatom of kekuleatoms) {
-		const element = kekuleatom.getSymbol();
-		const period = ptable.findIndex(period => period.some(atom => atom?.[0] == element));
-		const group = ptable[period].findIndex(atom => atom?.[0] == element);
-		const coord = kekuleatom.getCoord2D();
-		const atom = { period, group, x:(coord.x-x)*100+100, y:(coord.y-y)*100+100 };
-		createatom(atom);
-	}
-	for(const kekulebond of mol.getConnectors()) {
-		createbond(kekulebond.getConnectedObjs().map(kekuleatom => atoms[mol.indexOfNode(kekuleatom)]), kekulebond.getBondOrder());
-	}
+get('darkmode').oninput = e => {
+	const dark = e.target.checked;
+	document.documentElement.style.setProperty('--bgcolor', dark? '#000': '#fff');
+	document.documentElement.style.setProperty('--color', dark? '#fff': '#000');
 }
-get('smiles').value = smiles;
-Kekule.OpenBabel.enable(drawmolecule);
-get('smiles').oninput = () => {
-	smiles = get('smiles').value;
-	document.location.hash = encodeURIComponent(smiles);
-	atoms.length = 0;
-	bonds.length = 0;
-	selections.length = 0;
-	get('svg').innerHTML = '';
-	drawmolecule();
+get('showhydrogens').oninput = () => {
+	get('atoms').classList.toggle('hidehydrogens');
 }
 let queue = Promise.resolve();
 onkeydown = e => {
-	if(e.target == get('smiles')) return;
-	const atom = selections.at(-1);
-	if(!atom) return;
+	if(e.key.toUpperCase() == 'H') {
+		e.preventDefault();
+		get('showhydrogens').click();
+		return;
+	}
+	if(selection == null || e.target == get('smiles')) return;
+	if(!e.key.startsWith('Arrow')) return;
+	e.preventDefault();
+	const atom = atoms[selection];
 	queue = queue.then(async () => {
+		let atomindex = atoms.indexOf(atom);
+		if(atomindex == -1) return;
 		let period = atom.period;
 		let group = atom.group;
 		let x = 0;
 		let y = 0;
+		let number = mol.getAtomicNo(atomindex);
 		if(e.key == 'ArrowUp') {
 			period--;
 			y = 10;
@@ -222,152 +464,209 @@ onkeydown = e => {
 			period++;
 			y = -10;
 		} else if(e.key == 'ArrowLeft') {
-			group = { 'He':0, 'B':1, 'Al':1 }[atom.element] ?? group-1;
+			group = { 5:2, 13:2 }[number] ?? group-1;
 			x = 10;
 		} else if(e.key == 'ArrowRight') {
-			group = { 'H':17, 'Be':12, 'Mg':12 }[atom.element] ?? group+1;
+			group = { 4:13, 12:13 }[number] ?? group+1;
 			x = -10;
+		} else {
+			return;
 		}
 		await atom.text.animate({ translate:['0px 0px', x+'px '+y+'px'] }, 100).finished;
-		if(!ptable[period]?.[group]) {
+		atomindex = atoms.indexOf(atom);
+		if(atomindex == -1) return;
+		number = ptable.findIndex(arr => arr[0] == period && arr[1] == group);
+		if(number == -1) {
 			await atom.text.animate({ translate:[x+'px '+y+'px', '0px 0px'] }, 100).finished;
 			return;
 		}
+		atom.g.classList.remove(mol.getAtomLabel(atomindex));
+		mol.setAtomicNo(atomindex, number);
+		const label = atom.text.textContent = mol.getAtomLabel(atomindex);
+		atom.g.classList.add(label);
 		atom.period = period;
 		atom.group = group;
-		[atom.element, atom.maxbonds, atom.circle.style.fill, atom.electronegativity] = ptable[atom.period][atom.group];
-		atom.text.textContent = atom.element;
 		await atom.text.animate({ translate:[(-x)+'px '+(-y)+'px', '0px 0px'] }, 100).finished;
-		drawatom(atom);
-		for(const bond of bonds) {
-			if(!bond.atoms.includes(atom)) continue;
-			if(Math.abs(bond.atoms[0].electronegativity - bond.atoms[1].electronegativity) >= 2) {
-				bond.lines.classList.add('ionic');
-			} else {
-				bond.lines.classList.remove('ionic');
-			}
-		}
+		updatehydrogens(atomindex);
+		validate(atomindex);
+		generatesmiles();
 	});
 }
-onkeyup = e => {
-	if(e.target == get('smiles')) return;
-	generatesmiles();
-}
-setInterval(() => {
-	const selection = selections.at(-1);
+function animate(frame) {
+	frame++;
 	const size = radius*2;
 	const idealdist = size*2;
-	const idealdistSq = idealdist**2;
-	for(const bond of bonds) {
-		const [a, b] = bond.atoms;
-		const [dx, dy, dist] = getdist(a, b);
-		if(!dist) {
-			b.x += radius;
-			continue;
-		}
+	const calculate = (atom1, atom2, idealdist) => {
+		const [dx, dy, dist] = getdist(atom1, atom2);
+		if(!dist) return { x:Math.random()-.5, y:Math.random()-.5, correction:0 };
 		const nx = dx/dist;
 		const ny = dy/dist;
-		const correction = (dist-idealdist)/2*0.5;
-		if(a != selection) {
-			a.x += nx*correction;
-			a.y += ny*correction;
-		}
-		if(b != selection) {
-			b.x -= nx*correction;
-			b.y -= ny*correction;
-		}
+		const correction = (dist-idealdist)/2;
+		return { x:nx*correction, y:ny*correction, correction };
 	}
 	for(let i = 0; i < atoms.length; i++) {
+		const atom1 = atoms[i];
+		const neighbors = new Set();
+		for(let j = 0; j < mol.getConnAtoms(i); j++) {
+			neighbors.add(mol.getConnAtom(i, j));
+		}
 		for(let j = i+1; j < atoms.length; j++) {
-			const a = atoms[i];
-			const b = atoms[j];
-			const dx = b.x-a.x;
-			const dy = b.y-a.y;
-			const distSq = dx*dx + dy*dy;
-			if(distSq >= idealdistSq) continue;
-			if(!distSq) {
-				a.x -= radius;
-				b.x += radius;
-				continue;
+			const atom2 = atoms[j];
+			const offset = calculate(atom1, atom2, idealdist);
+			if(offset.correction < 0 || neighbors.has(j)) { // either repelling or bonded
+				if(i != selection) {
+					atom1.x += offset.x;
+					atom1.y += offset.y;
+				}
+				if(j != selection) {
+					atom2.x -= offset.x;
+					atom2.y -= offset.y;
+				}
 			}
-			const dist = Math.sqrt(distSq);
-			const factor = (idealdist-dist)/2/dist;
-			const fx = dx*factor;
-			const fy = dy*factor;
-			if(a != selection) {
-				a.x -= fx;
-				a.y -= fy;
+		}
+		const hydrogens = atom1.hydrogens;
+		for(let i = 0; i < hydrogens.length; i++) {
+			const hydrogen1 = hydrogens[i];
+			for(let j = i+1; j < hydrogens.length; j++) {
+				const hydrogen2 = hydrogens[j];
+				const offset = calculate(hydrogen1, hydrogen2, size);
+				if(offset.correction > 0) continue;
+				hydrogen1.x += offset.x;
+				hydrogen1.y += offset.y;
+				hydrogen2.x -= offset.x;
+				hydrogen2.y -= offset.y;
 			}
-			if(b != selection) {
-				b.x += fx;
-				b.y += fy;
-			}
+			const offset = calculate(atom1, hydrogen1, radius+20);
+			hydrogen1.x -= offset.x;
+			hydrogen1.y -= offset.y;
 		}
 	}
 	const maxX = get('svg').clientWidth-size;
 	const maxY = get('svg').clientHeight-size;
-	const k = 0.1;
-	for (const atom of atoms) {
-		if (atom != selection) {
+	for(let i = 0; i < atoms.length; i++) {
+		const atom = atoms[i];
+		if(i != selection) {
 			if(atom.x < size) {
-				atom.x += (size-atom.x)*k;
+				atom.x += (size-atom.x)*.1;
 			} else if(atom.x > maxX) {
-				atom.x -= (atom.x-maxX)*k;
+				atom.x -= (atom.x-maxX)*.1;
 			}
 			if(atom.y < size) {
-				atom.y += (size-atom.y)*k;
+				atom.y += (size-atom.y)*.1;
 			} else if(atom.y > maxY) {
-				atom.y -= (atom.y-maxY)*k;
+				atom.y -= (atom.y-maxY)*.1;
 			}
 		}
-		drawatom(atom);
+		moveatom(i);
+		movebonds(i);
 	}
-}, 100);
+	if(frame < 200) {
+		timeout = setTimeout(animate, 40, frame);
+	}
+}
 function generatesmiles() {
-	if(!atoms.length) return;
-	const mol = new Kekule.Molecule();
-	const map = new Map(atoms.map(a => [a, mol.appendAtom(a.element)]));
-	let valid = true;
-	for(const bond of bonds) {
-		if(bond.atoms.some(atom => atom.bonds > atom.maxbonds)) {
-			valid = false;
-			bond.lines.classList.add('error');
-		} else {
-			bond.lines.classList.remove('error');
+	get('info').textContent = '';
+	try {
+		smiles = mol.toSmiles();
+		history.replaceState(null, null, '#'+smiles);
+		get('smiles').value = smiles;
+		mol.validate(); 
+	} catch(err) {
+		if(!err.toString().includes('The distance between two atoms is too close')) {
+			console.warn(err);
 		}
-		mol.appendBond(bond.atoms.map(atom => map.get(atom)), bond.lines.children.length-1);
 	}
-	smiles = Kekule.IO.saveFormatData(mol, "smi");
-	get('smiles').value = smiles;
-	document.location.hash = encodeURIComponent(smiles);
-	get('info').textContent = valid? '': 'Too many bonds!';
+	highlight();
+	clearTimeout(timeout);
+	animate(0);
+}
+function highlight() {
+	if(document.getElementsByClassName('error').length) return;
+	get('highlights').textContent = '';
+	atoms.forEach(atom => {
+		atom.g.classList.remove('highlight');
+		delete atom.highlight;
+		delete atom.grouptext;
+	});
+	bonds.forEach(bond => {
+		bond.g.classList.remove('highlight');
+		delete bond.highlight;
+	});
+	const claimed = new Set();
+	const searcher = new OCL.SSSearcher();
+	searcher.setMolecule(mol);
+	for(const [name, pattern, query] of groups) {
+		searcher.setFragment(query);
+		if(!searcher.findFragmentInMolecule()) continue;
+		const arr = pattern.replace(/[\d=#()]/g, '').replace(/\[\w+\]/g, 'X').split('|');
+		const hydrogenindexes = [];
+		while(pattern[1].includes('H')) {
+			hydrogenindexes.push(arr[1].indexOf('H')-1);
+			arr[1] = arr[1].replace('H', '');
+		}
+		for(let atomindexes of searcher.getMatchList()) {
+			atomindexes = atomindexes.slice(arr[0].length, arr[0].length+arr[1].length);
+			if(atomindexes.some(x => claimed.has(x))) continue;
+			if(hydrogenindexes.some(hydrogenindex => !mol.getImplicitHydrogens(atomindexes[hydrogenindex]))) continue;
+			const g = create('g');
+			const text = create('text');
+			text.textContent = name;
+			for(const atomindex of atomindexes) {
+				claimed.add(atomindex);
+				const atom = atoms[atomindex];
+				atom.grouptext = text;
+				atom.g.classList.add('highlight');
+				const highlight = create('circle');
+				atom.highlight = highlight;
+				g.append(highlight);
+			}
+			for(let i = 0; i < bonds.length; i++) {
+				const atomindex1 = mol.getBondAtom(0, i);
+				const atomindex2 = mol.getBondAtom(1, i);
+				if(!atomindexes.includes(atomindex1) || !atomindexes.includes(atomindex2)) continue;
+				bonds[i].g.classList.add('highlight');
+				const highlight = create('line');
+				bonds[i].highlight = highlight;
+				highlight.setAttribute('stroke-width', radius*2+20);
+				g.append(highlight);
+			}
+			get('highlights').append(g);
+			const bbox = g.getBBox();
+			text.setAttribute('x', bbox.x+bbox.width/2);
+			text.setAttribute('y', bbox.y+bbox.height+7);
+			get('highlights').append(text);
+		}
+	}
+}
+get('form').onreset = e => {
+	e.preventDefault();
+	get('smiles').value = '';
+	get('smiles').oninput();
 }
 get('form').onsubmit = async e => {
 	e.preventDefault();
-	get('info').textContent = 'Loading...';
-	const keys = smiles.split('.').map(s => Kekule.IO.saveFormatData(Kekule.IO.loadFormatData(s, 'smi'), 'inchikey').trim()).join(',');
-	const result = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/'+keys+'/property/CanonicalSMILES,Title,IUPACName/JSON').then(x => x.json());
+	const smile = smiles.split('.').reduce((a, b) => a.length > b.length? a: b);
+	get('info').innerHTML = html;
+	Jmol.script(jmol, 'load "$'+smile.replaceAll('"', ''))+'"';
+	const result = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/property/CanonicalSMILES,Title,IUPACName/JSON', {
+		method:'POST',
+		headers:{ 'Content-Type': 'application/x-www-form-urlencoded' },
+		body:'smiles='+encodeURIComponent(smile)
+	}).then(x => x.json());
+	console.log(result);
 	if(result.Fault) {
 		get('info').textContent = 'Error!';
-		console.warn(result, result.Fault);
 		return;
 	}
-	console.log(result);
-	get('info').textContent = '';
-	for(const mol of result.PropertyTable.Properties) {
-		const div = document.createElement('div');
-		const title = mol.Title?.toLowerCase() ?? '';
-		const iupac = mol.IUPACName?.toLowerCase() ?? '';
-		div.textContent = title;
-		if(title != iupac) {
-			div.textContent += '\n('+iupac+')';
-		}
-		div.textContent += '\n';
-		const img = new Image();
-		img.src = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/'+mol.CID+'/PNG?image_size=small';
-		div.append(img);
-		get('info').append(div);
+	const property = result.PropertyTable.Properties[0];
+	const div = document.createElement('div');
+	const title = property.Title ?? '';
+	const iupac = property.IUPACName ?? '';
+	div.textContent = title;
+	if(title.toUpperCase() != iupac.toUpperCase()) {
+		div.textContent += '\n('+iupac+')';
 	}
+	get('info').append(div);
 }
 </script>
 </body>

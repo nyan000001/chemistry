@@ -5,21 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
 :root { --bgcolor:#fff; --color:#000; }
-* { font:20px monospace; }
+:root:has(#darkmode:checked) { --bgcolor:#000; --color:#fff; }
+:root:has(#showhydrogens:not(:checked)) #atoms g.H, .hidden { display:none; }
+* { font:20px monospace; box-sizing:border-box; }
 body { margin:0; background:var(--bgcolor); color:var(--color); }
-.hidehydrogens g.H { display:none; }
-#wrapper { display:grid; grid-template-columns:1fr auto; grid-template-rows:1fr auto; height:100dvh; }
-#svg { user-select:none; touch-action:none; grid-column:1;  grid-row:1; width:100%; height:100%; }
-#svg * { -webkit-tap-highlight-color:transparent; }
+#svg { touch-action:none; width:100dvw; height:calc(100dvh - 40px); }
+#info { position:absolute; top:0; right:0; max-width:100dvw; background:var(--bgcolor); border:1px solid var(--color); }
+#delete, #close { position:fixed; top:0; right:0; }
+#name, #iupac { word-break:break-word; text-align:center; }
+#name {padding:3px; margin-right:40px; }
+#iupac { font-size:15px; }
+#form { display:flex; position:fixed; bottom:0; width:100dvw; height:40px; }
+#smiles { min-width:0; flex:1; }
+
+#svg * { -webkit-tap-highlight-color:transparent; outline:none; }
 circle { fill:var(--bgcolor); stroke-width:3; }
-text { pointer-events:none; text-anchor:middle; dominant-baseline:middle; }
+text { user-select:none; pointer-events:none; text-anchor:middle; dominant-baseline:middle; }
 line:not(.hitbox) { pointer-events:none; }
 #bonds, #atoms { stroke:var(--color); }
 #bonds line, #atoms line { stroke-width:3; }
 #bonds line.hitbox { stroke:transparent; stroke-width:50; pointer-events:stroke; cursor:pointer; }
 
-#atoms g:not(.H) circle:hover, #bonds .hitbox:hover ~ line, .selection > circle { stroke-width:5 !important; }
-#atoms g:not(.H) circle { cursor:pointer; }
+#atoms g.H { pointer-events:none; }
+#atoms g.C circle { fill:#555; }
+#atoms g.N circle { fill:#35f; }
+#atoms g.O circle { fill:#f00; }
+#atoms g.F circle { fill:#9e5; }
+#atoms g.S circle { fill:#ff0; }
+
+#atoms g:hover > circle, #atoms g:focus > circle, #bonds g:hover .hitbox ~ line, #bonds g:focus .hitbox ~ line { stroke-width:5 !important; }
+#atoms g circle { cursor:pointer; }
 #atoms g.H { pointer-events:none; }
 #atoms g.H circle { r:15; }
 #atoms g.H text { font-size:17px; }
@@ -31,48 +46,52 @@ line:not(.hitbox) { pointer-events:none; }
 
 .error { stroke:#f00 !important; }
 .highlight line, .highlight circle { stroke:#fff; }
-#form { display:flex; grid-column:1; grid-row:2; }
-#smiles { min-width:0; flex:1; }
-#info { white-space:pre-wrap; grid-column:2; grid-row: 1 / 3; }
-#atoms g.C circle { fill:#555; }
-#atoms g.N circle { fill:#35f; }
-#atoms g.O circle { fill:#f00; }
-#atoms g.F circle { fill:#9e5; }
-#atoms g.S circle { fill:#ff0; }
 
 #settings { position:fixed; top:0; left:0; cursor:default; user-select:none; background:var(--bgcolor); padding:3px; }
-label:hover { font-weight:bold; }
+#settings label { display:block; }
+#settings label:hover { font-weight:bold; }
+
+@media (pointer:fine) {
+	#delete { display:none; }
+}
+
+@media (max-width:300px) {
+	#jmol_appletinfotablediv { margin:0 calc(50dvw - 150px) }
+}
 </style>
 </head>
 <body>
-<div id="wrapper">
-	<svg id="svg">
-		<g id="highlights"></g>
-		<g id="bonds"></g>
-		<g id="atoms"></g>
-	</svg>
-	<form id="form">
-		<input type="reset" value="❌">
-		<input id="smiles" spellcheck="false">
-		<input type="submit" value="🔎">
-	</form>
-	<div id="info"></div>
-</div>
+<svg id="svg">
+	<g id="highlights"></g>
+	<g id="bonds"></g>
+	<g id="atoms"></g>
+</svg>
 <details id="settings">
-	<summary>settings</summary>
-	<label><input type="checkbox" id="darkmode">dark mode</label>
-	<label><input type="checkbox" id="showhydrogens" checked>show hydrogens</label>
+	<summary>Settings</summary>
+	<label><input type="checkbox" id="darkmode">Dark mode</label>
+	<label><input type="checkbox" id="showhydrogens" checked>Show hydrogens</label>
 </details>
+<input type="button" id="delete" value="🗑️">
+<form id="form">
+	<input type="reset" value="❌">
+	<input id="smiles" spellcheck="false" autofocus>
+	<input type="submit" value="🔎">
+</form>
+<div id="info" class="hidden">
+	<input type="button" id="close" value="❌">
+	<div id="name"></div>
+	<div id="iupac"></div>
+	<div id="applet"></div>
+</div>
 <script src="https://chemapps.stolaf.edu/jmol/jsmol/JSmol.min.js"></script>
 <script type="module">
-const html = Jmol.getAppletHtml('jmol', { use:'HTML5', j2sPath:'https://chemapps.stolaf.edu/jmol/jsmol/j2s' });
 import OCL from "https://cdn.jsdelivr.net/npm/openchemlib@9.25.0/dist/openchemlib.js";
 const ptable = [[0,0],[0,0],[0,0],[2,1],[2,2],[2,13],[2,14],[2,15],[2,16],[2,17],[2,18],[3,1],[3,2],[3,13],[3,14],[3,15],[3,16],[3,17],[3,18],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[4,10],[4,11],[4,12],[4,13],[4,14],[4,15],[4,16],[4,17],[4,18],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6],[5,7],[5,8],[5,9],[5,10],[5,11],[5,12],[5,13],[5,14],[5,15],[5,16],[5,17],[5,18],[6,1],[6,2],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[6,15],[6,16],[6,17],[6,18],[7,1],[7,2],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18]];
 const atoms = [];
 const bonds = [];
-let selection = null;
 let timeout;
 const get = id => document.getElementById(id);
+get('applet').innerHTML = Jmol.getAppletHtml('jmol', { use:'HTML5', j2sPath:'https://chemapps.stolaf.edu/jmol/jsmol/j2s' });
 const create = elem => document.createElementNS('http://www.w3.org/2000/svg', elem);
 let smiles = '';
 try {
@@ -82,11 +101,10 @@ try {
 }
 let mol = new OCL.Molecule(50, 50);
 const groups = [
-	['phenol', '|Oc1ccccc1|'],
+	['phenol', '|OHc1ccccc1|'],
 	['benzene', '|c1ccccc1|'],
-
 	['furan', '|c1ccoc1|'],
-	['pyrrole', '|c1ccnHc1|'],
+	['pyrrole', '|c1ccnc1|'],
 	['thiophene', '|c1ccsc1|'],
 	['pyridine', '|n1ccccc1|'],
 	['pyrazole', '|n1nccc1|'],
@@ -96,6 +114,9 @@ const groups = [
 	['piperidine', '|C1CCCCN1|'],
 	['pyrrolidine', '|C1CCCN1|'],
 	['tetrahydrofuran', '|C1CCCO1|'],
+	['aziridine', '|C1NC1|'],
+	['epoxy', '|C1OC1|'],
+	['episulfide', '|C1SC1|'],
 
 	['acid anhydride', '|O=COC=O|'],
 	['ester', '|C(=O)O|C'],
@@ -104,21 +125,32 @@ const groups = [
 	['ketone', 'C|C(=O)|C'],
 	['aldehyde', '|CH=O|'],
 	['acyl chloride', '|C(=O)[Cl]|'],
+	['thioester', '|C(=O)S|C'],
+	['dithioester', '|C(=S)S|C'],
+	['dithiocarboxylic acid', '|C(=S)SH|'],
 
-	['aziridine', '|C1NC1|'],
-	['cyanate', '|OC#N|'],
+	['sulfonamide', 'C|S(=O)(=O)N|'],
+	['sulfonate ester', 'C|S(=O)(=O)O|C'],
+	['sulfonic acid', 'C|S(=O)(=O)OH|'],
+	['sulfone', 'C|S(=O)(=O)|C'],
+	['sulfoxide', 'C|S(=O)|C'],
+
+	['isothiocyanate', '|N=C=S|'],
 	['isocyanate', '|N=C=O|'],
+	['thiocyanate', '|SC#N|'],
+	['cyanate', '|OC#N|'],
+	['nitrile oxide', 'C|C#NO|'],
 	['fulminate', '|ON#C|'],
-	['nitrile oxide', '|C#NO|'],
-	['nitrile', '|C#N|'],
-	['amine', 'C|N|'],
-	['imine', '|C=N|'],
-	['nitro', '|N(=O)=O|'],
-	['azo', '|N=N|'],
-	['azide', '|N=N=N|'],
-	['hydrazone', '|C=NNH|'],
+	['nitrile', 'C|C#N|'],
 
-	['epoxy', '|C1OC1|'],
+	['azide', '|N=N=N|'],
+	['azo', 'C|N=N|C'],
+	['nitro', 'C|N(=O)=O|'],
+	['nitro', 'C|N(=O)O|'],
+	['hydrazone', '|C=NN|'],
+	['imine', '|C=N|'],
+	['amine', 'C|N|'],
+
 	['ether', 'C|O|C'],
 	['peroxy', 'C|OO|C'],
 	['trioxy', 'C|OOO|C'],
@@ -128,16 +160,6 @@ const groups = [
 	['hydrotrioxy', 'C|OOOH|'],
 	['hydrotetroxy', 'C|OOOOH|'],
 
-	['sulfoxide', '|S(=O)|'],
-	['sulfone', '|S(=O)(=O)|'],
-	['sulfonate ester', '|OS(=O)(=O)|'],
-	['sulfonamide', '|NS(=O)(=O)|'],
-	['isothiocyanate', '|N=C=S|'],
-	['thiocyanate', '|SC#N|'],
-	['thioester', '|C(=O)S|C'],
-	['dithioester', '|C(=S)S|C'],
-	['dithiocarboxylic acid', '|C(=S)SH|'],
-	['episulfide', '|C1SC1|'],
 	['sulfide', 'C|S|C'],
 	['disulfide', 'C|SS|C'],
 	['trisulfide', 'C|SSS|C'],
@@ -240,7 +262,6 @@ get('smiles').oninput = () => {
 	history.replaceState(null, null, '#'+smiles);
 	atoms.length = 0;
 	bonds.length = 0;
-	selection = null;
 	get('highlights').textContent = get('bonds').textContent = get('atoms').textContent = '';
 	drawmolecule();
 }
@@ -255,40 +276,6 @@ function validate(atomindex) {
 		bonds[i].g.classList[invalid? 'add': 'remove']('error');
 	}
 }
-function unselect() {
-	if(selection == null) return;
-	atoms[selection]?.g.classList.remove('selection');
-	selection = null;
-}
-function movebond(bondindex) {
-	const atom1 = atoms[mol.getBondAtom(0, bondindex)];
-	const atom2 = atoms[mol.getBondAtom(1, bondindex)];
-	const [dx, dy, d] = getdist(atom1, atom2);
-	const dist = d || 1;
-	const nx = -dy / dist;
-	const ny = dx / dist;
-	const move = (line, offset) => {
-		line.setAttribute('x1', atom1.x + nx * offset);
-		line.setAttribute('y1', atom1.y + ny * offset);
-		line.setAttribute('x2', atom2.x + nx * offset);
-		line.setAttribute('y2', atom2.y + ny * offset);
-	};
-	const bond = bonds[bondindex];
-	if(bond.highlight) {
-		move(bond.highlight, 0);
-		bond.highlight.setAttribute('stroke-width', radius*2+20);
-	}
-	move(bond.hitbox, 0);
-	for(let i = 0; i < bond.lines.length; i++) {
-		move(bond.lines[i], (i-(bond.lines.length-1)/2)*6);
-	}
-}
-function movebonds(atomindex) {
-	for(let i = 0; i < bonds.length; i++) {
-		if(mol.getBondAtom(0, i) != atomindex && mol.getBondAtom(1, i) != atomindex) continue;
-		movebond(i);
-	}
-}
 function updatebond(bondindex) {
 	let bond = bonds[bondindex];
 	if(!bond) {
@@ -296,12 +283,13 @@ function updatebond(bondindex) {
 		bonds.push(bond);
 		bond.hitbox.classList.add('hitbox');
 		bond.hitbox.onpointerdown = e => {
-			unselect();
 			const bondindex = bonds.indexOf(bond);
 			mol.setBondOrder(bondindex, Math.min(3, mol.getBondOrder(bondindex)+(e.button? -1: 1)));
 			updatebond(bondindex);
+			generatesmiles();
 		}
 		bond.g.append(bond.hitbox);
+		bond.g.tabIndex = 0;
 		get('bonds').append(bond.g);
 	}
 	while(bond.lines.length < mol.getBondOrder(bondindex)) {
@@ -316,7 +304,6 @@ function updatebond(bondindex) {
 	const atomindex2 = mol.getBondAtom(1, bondindex);
 	updatehydrogens(atomindex1);
 	updatehydrogens(atomindex2);
-	movebond(bondindex);
 	if(!mol.getBondOrder(bondindex)) {
 		bond.g.remove();
 		bonds.splice(bondindex, 1);
@@ -344,6 +331,8 @@ function updatehydrogens(atomindex) {
 }
 function moveatom(atomindex) {
 	const atom = atoms[atomindex];
+	mol.setAtomX(atomindex, atom.x*100);
+	mol.setAtomY(atomindex, atom.y*100);
 	if(atom.highlight) {
 		atom.highlight.setAttribute('cx', atom.x);
 		atom.highlight.setAttribute('cy', atom.y);
@@ -371,6 +360,7 @@ function moveatom(atomindex) {
 function createatom(atomindex, pointerdown) {
 	const atom = atoms[atomindex];
 	atom.g = create('g');
+	atom.g.tabIndex = 0;
 	atom.circle = create('circle');
 	atom.text = create('text');
 	const label = atom.text.textContent = mol.getAtomLabel(atomindex);
@@ -382,7 +372,6 @@ function createatom(atomindex, pointerdown) {
 	atom.circle.onpointerdown = e => {
 		const atomindex = atoms.indexOf(atom);
 		if(e.button) {
-			unselect();
 			for(let i = mol.getAllBonds()-1; i >= 0; i--) {
 				if(atomindex != mol.getBondAtom(0, i) && atomindex != mol.getBondAtom(1, i)) continue;
 				mol.setBondOrder(i, 0);
@@ -392,18 +381,18 @@ function createatom(atomindex, pointerdown) {
 			atoms.splice(atomindex, 1);
 			mol.deleteAtom(atomindex);
 			onpointermove = onpointerup = null;
+			generatesmiles();
 			return;
 		}
-		if(selection != null && selection != atomindex) {
-			if(mol.getBond(selection, atomindex) == -1) {
-				const bondindex = mol.addBond(selection, atomindex);
+		const selectedindex = atoms.findIndex(atom => atom.g == document.activeElement);
+		if(selectedindex > -1 && selectedindex != atomindex) {
+			if(mol.getBond(selectedindex, atomindex) == -1) {
+				const bondindex = mol.addBond(selectedindex, atomindex);
 				mol.setBondOrder(bondindex, 1);
 				updatebond(bondindex);
+				generatesmiles();
 			}
-			atoms[selection].g.classList.remove('selection');
 		}
-		selection = atomindex;
-		atom.g.classList.add('selection');
 		onpointermove = e => {
 			atom.x = e.pageX;
 			atom.y = e.pageY;
@@ -413,42 +402,45 @@ function createatom(atomindex, pointerdown) {
 		onpointerup = () => {
 			onpointerup = onpointermove = null;
 		}
+		atom.g.focus();
 	}
 	if(pointerdown) {
 		atom.circle.onpointerdown({});
 	}
 }
+get('delete').onpointerdown = () => {
+	if(document.activeElement.parentNode == get('atoms')) {
+		[...document.activeElement.children].at(-2).onpointerdown({ button:1 });
+	} else if(document.activeElement.parentNode == get('bonds')) {
+		document.activeElement.children[0].onpointerdown({ button:1 });
+	}
+}
 get('svg').oncontextmenu = e => e.preventDefault();
 get('svg').onpointerdown = e => {
-	if(e.target == get('svg')) {
-		if(e.button) {
-			unselect();
-		} else {
-			atoms.push({ x:e.pageX, y:e.pageY, period:2, group:14, hydrogens:[] });
-			createatom(mol.addAtom(6), true);
-		}
+	if(e.target == get('svg') && !e.button) {
+		e.preventDefault();
+		atoms.push({ x:e.pageX, y:e.pageY, period:2, group:14, hydrogens:[] });
+		createatom(mol.addAtom(6), true);
+		generatesmiles();
 	}
-	generatesmiles();
-}
-get('darkmode').oninput = e => {
-	const dark = e.target.checked;
-	document.documentElement.style.setProperty('--bgcolor', dark? '#000': '#fff');
-	document.documentElement.style.setProperty('--color', dark? '#fff': '#000');
-}
-get('showhydrogens').oninput = () => {
-	get('atoms').classList.toggle('hidehydrogens');
 }
 let queue = Promise.resolve();
 onkeydown = e => {
-	if(e.key.toUpperCase() == 'H') {
+	if(e.key.toUpperCase() == 'H' && !e.ctrlKey) {
 		e.preventDefault();
 		get('showhydrogens').click();
 		return;
 	}
-	if(selection == null || e.target == get('smiles')) return;
+	if(e.target == get('smiles')) return;
+	if(e.key == 'Delete') {
+		e.preventDefault();
+		get('delete').onpointerdown();
+		return;
+	}
 	if(!e.key.startsWith('Arrow')) return;
+	const atom = atoms.find(atom => atom.g == document.activeElement);
+	if(!atom) return;
 	e.preventDefault();
-	const atom = atoms[selection];
 	queue = queue.then(async () => {
 		let atomindex = atoms.indexOf(atom);
 		if(atomindex == -1) return;
@@ -496,6 +488,7 @@ function animate(frame) {
 	frame++;
 	const size = radius*2;
 	const idealdist = size*2;
+	const selected = atoms.find(atom => atom.g == document.activeElement);
 	const calculate = (atom1, atom2, idealdist) => {
 		const [dx, dy, dist] = getdist(atom1, atom2);
 		if(!dist) return { x:Math.random()-.5, y:Math.random()-.5, correction:0 };
@@ -514,11 +507,11 @@ function animate(frame) {
 			const atom2 = atoms[j];
 			const offset = calculate(atom1, atom2, idealdist);
 			if(offset.correction < 0 || neighbors.has(j)) { // either repelling or bonded
-				if(i != selection) {
+				if(atom1 != selected) {
 					atom1.x += offset.x;
 					atom1.y += offset.y;
 				}
-				if(j != selection) {
+				if(atom2 != selected) {
 					atom2.x -= offset.x;
 					atom2.y -= offset.y;
 				}
@@ -545,7 +538,7 @@ function animate(frame) {
 	const maxY = get('svg').clientHeight-size;
 	for(let i = 0; i < atoms.length; i++) {
 		const atom = atoms[i];
-		if(i != selection) {
+		if(atom != selected) {
 			if(atom.x < size) {
 				atom.x += (size-atom.x)*.1;
 			} else if(atom.x > maxX) {
@@ -558,30 +551,56 @@ function animate(frame) {
 			}
 		}
 		moveatom(i);
-		movebonds(i);
+	}
+	for(let i = 0; i < bonds.length; i++) {
+		const bond = bonds[i];
+		const atom1 = atoms[mol.getBondAtom(0, i)];
+		const atom2 = atoms[mol.getBondAtom(1, i)];
+		const [dx, dy, d] = getdist(atom1, atom2);
+		const dist = d || 1;
+		const nx = -dy / dist;
+		const ny = dx / dist;
+		const move = (line, offset) => {
+			line.setAttribute('x1', atom1.x + nx * offset);
+			line.setAttribute('y1', atom1.y + ny * offset);
+			line.setAttribute('x2', atom2.x + nx * offset);
+			line.setAttribute('y2', atom2.y + ny * offset);
+		};
+		if(bond.highlight) {
+			move(bond.highlight, 0);
+			bond.highlight.setAttribute('stroke-width', radius*2+20);
+		}
+		move(bond.hitbox, 0);
+		for(let j = 0; j < bond.lines.length; j++) {
+			move(bond.lines[j], (j-(bond.lines.length-1)/2)*6);
+		}
 	}
 	if(frame < 200) {
 		timeout = setTimeout(animate, 40, frame);
 	}
 }
+onresize = () => {
+	clearTimeout(timeout);
+	animate(0);
+}
+get('close').onclick = () => {
+	Jmol.script(jmol, 'zap');
+	get('info').classList.add('hidden');
+}
 function generatesmiles() {
-	get('info').textContent = '';
 	try {
 		smiles = mol.toSmiles();
 		history.replaceState(null, null, '#'+smiles);
 		get('smiles').value = smiles;
 		mol.validate(); 
 	} catch(err) {
-		if(!err.toString().includes('The distance between two atoms is too close')) {
-			console.warn(err);
-		}
+		//console.warn(err);
 	}
 	highlight();
 	clearTimeout(timeout);
 	animate(0);
 }
 function highlight() {
-	if(document.getElementsByClassName('error').length) return;
 	get('highlights').textContent = '';
 	atoms.forEach(atom => {
 		atom.g.classList.remove('highlight');
@@ -592,6 +611,7 @@ function highlight() {
 		bond.g.classList.remove('highlight');
 		delete bond.highlight;
 	});
+	if(document.getElementsByClassName('error').length) return;
 	const claimed = new Set();
 	const searcher = new OCL.SSSearcher();
 	searcher.setMolecule(mol);
@@ -600,7 +620,7 @@ function highlight() {
 		if(!searcher.findFragmentInMolecule()) continue;
 		const arr = pattern.replace(/[\d=#()]/g, '').replace(/\[\w+\]/g, 'X').split('|');
 		const hydrogenindexes = [];
-		while(pattern[1].includes('H')) {
+		while(arr[1].includes('H')) {
 			hydrogenindexes.push(arr[1].indexOf('H')-1);
 			arr[1] = arr[1].replace('H', '');
 		}
@@ -645,8 +665,10 @@ get('form').onreset = e => {
 }
 get('form').onsubmit = async e => {
 	e.preventDefault();
+	get('name').textContent = 'Loading';
+	get('iupac').textContent = '...';
+	get('info').classList.remove('hidden');
 	const smile = smiles.split('.').reduce((a, b) => a.length > b.length? a: b);
-	get('info').innerHTML = html;
 	Jmol.script(jmol, 'load $'+smile);
 	const result = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/property/CanonicalSMILES,Title,IUPACName/JSON', {
 		method:'POST',
@@ -655,18 +677,12 @@ get('form').onsubmit = async e => {
 	}).then(x => x.json());
 	console.log(result);
 	if(result.Fault) {
-		get('info').textContent = 'Error!';
+		get('name').textContent = result.Fault.Message;
 		return;
 	}
 	const property = result.PropertyTable.Properties[0];
-	const div = document.createElement('div');
-	const title = property.Title ?? '';
-	const iupac = property.IUPACName ?? '';
-	div.textContent = title;
-	if(title.toUpperCase() != iupac.toUpperCase()) {
-		div.textContent += '\n('+iupac+')';
-	}
-	get('info').append(div);
+	get('name').textContent = property.Title ?? '?';
+	get('iupac').textContent = property.IUPACName ?? '?';
 }
 </script>
 </body>

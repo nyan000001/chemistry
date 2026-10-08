@@ -17,6 +17,8 @@ body { margin:0; background:var(--bgcolor); color:var(--color); }
 #iupac { font-size:15px; }
 #form { display:flex; position:fixed; bottom:0; width:100dvw; height:40px; }
 #smiles { min-width:0; flex:1; }
+#form > input, #info > input { background:var(--bgcolor); color:var(--color); border:1px solid var(--color); height:40px; }
+#form > input:focus, #info > input:focus { outline:1px solid var(--color); outline-offset:-2px; }
 
 #svg * { -webkit-tap-highlight-color:transparent; outline:none; }
 circle { fill:var(--bgcolor); stroke-width:3; }
@@ -85,21 +87,32 @@ line:not(.hitbox) { pointer-events:none; }
 </div>
 <script src="https://chemapps.stolaf.edu/jmol/jsmol/JSmol.min.js"></script>
 <script type="module">
+const get = id => document.getElementById(id);
+for(const checkbox of get('settings').querySelectorAll('input[type=checkbox]')) {
+	const value = localStorage.getItem(checkbox.id);
+	if(!value) continue;
+	checkbox.checked = JSON.parse(value);
+}
+get('applet').innerHTML = Jmol.getAppletHtml('jmol', { color:get('darkmode').checked? '#000000': '#ffffff', use:'HTML5', j2sPath:'https://chemapps.stolaf.edu/jmol/jsmol/j2s' });
+get('settings').oninput = e => {
+	if(e.target.id == 'darkmode') {
+		Jmol.script(jmol, 'background '+(get('darkmode').checked? '[x000000]': '[xFFFFFF]'));
+	}	
+	localStorage.setItem(e.target.id, e.target.checked);
+}
 import OCL from "https://cdn.jsdelivr.net/npm/openchemlib@9.25.0/dist/openchemlib.js";
 const ptable = [[0,0],[0,0],[0,0],[2,1],[2,2],[2,13],[2,14],[2,15],[2,16],[2,17],[2,18],[3,1],[3,2],[3,13],[3,14],[3,15],[3,16],[3,17],[3,18],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[4,10],[4,11],[4,12],[4,13],[4,14],[4,15],[4,16],[4,17],[4,18],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6],[5,7],[5,8],[5,9],[5,10],[5,11],[5,12],[5,13],[5,14],[5,15],[5,16],[5,17],[5,18],[6,1],[6,2],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,3],[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[6,15],[6,16],[6,17],[6,18],[7,1],[7,2],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,3],[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18]];
 const atoms = [];
 const bonds = [];
 let timeout;
-const get = id => document.getElementById(id);
-get('applet').innerHTML = Jmol.getAppletHtml('jmol', { use:'HTML5', j2sPath:'https://chemapps.stolaf.edu/jmol/jsmol/j2s' });
 const create = elem => document.createElementNS('http://www.w3.org/2000/svg', elem);
+let mol = new OCL.Molecule(50, 50);
 let smiles = '';
 try {
 	smiles = location.hash.slice(1);
 } catch(err) {
 	console.warn(err);
 }
-let mol = new OCL.Molecule(50, 50);
 const groups = [
 	['phenol', '|OHc1ccccc1|'],
 	['benzene', '|c1ccccc1|'],
@@ -254,8 +267,6 @@ function drawmolecule() {
 		validate(i);
 	}
 	highlight();
-	clearTimeout(timeout);
-	animate(0);
 }
 get('smiles').oninput = () => {
 	smiles = get('smiles').value;
@@ -589,19 +600,18 @@ get('close').onclick = () => {
 }
 function generatesmiles() {
 	try {
+		//mol.validate();
 		smiles = mol.toSmiles();
 		history.replaceState(null, null, '#'+smiles);
 		get('smiles').value = smiles;
-		mol.validate(); 
 	} catch(err) {
 		//console.warn(err);
 	}
 	highlight();
-	clearTimeout(timeout);
-	animate(0);
 }
 function highlight() {
 	get('highlights').textContent = '';
+	const claimed = new Set(atoms.flatMap((atom, i) => atom.g.classList.contains('error')? i: []));
 	atoms.forEach(atom => {
 		atom.g.classList.remove('highlight');
 		delete atom.highlight;
@@ -611,8 +621,6 @@ function highlight() {
 		bond.g.classList.remove('highlight');
 		delete bond.highlight;
 	});
-	if(document.getElementsByClassName('error').length) return;
-	const claimed = new Set();
 	const searcher = new OCL.SSSearcher();
 	searcher.setMolecule(mol);
 	for(const [name, pattern, query] of groups) {
@@ -637,6 +645,8 @@ function highlight() {
 				atom.grouptext = text;
 				atom.g.classList.add('highlight');
 				const highlight = create('circle');
+				highlight.setAttribute('cx', atom.x);
+				highlight.setAttribute('cy', atom.y);
 				atom.highlight = highlight;
 				g.append(highlight);
 			}
@@ -647,6 +657,10 @@ function highlight() {
 				bonds[i].g.classList.add('highlight');
 				const highlight = create('line');
 				bonds[i].highlight = highlight;
+				highlight.setAttribute('x1', atoms[atomindex1].x);
+				highlight.setAttribute('y1', atoms[atomindex1].y);
+				highlight.setAttribute('x2', atoms[atomindex2].x);
+				highlight.setAttribute('y2', atoms[atomindex2].y);
 				highlight.setAttribute('stroke-width', radius*2+20);
 				g.append(highlight);
 			}
@@ -657,6 +671,8 @@ function highlight() {
 			get('highlights').append(text);
 		}
 	}
+	clearTimeout(timeout);
+	animate(0);
 }
 get('form').onreset = e => {
 	e.preventDefault();
@@ -665,6 +681,7 @@ get('form').onreset = e => {
 }
 get('form').onsubmit = async e => {
 	e.preventDefault();
+	Jmol.script(jmol, 'zap');
 	get('name').textContent = 'Loading';
 	get('iupac').textContent = '...';
 	get('info').classList.remove('hidden');
